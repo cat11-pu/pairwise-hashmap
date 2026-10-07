@@ -112,12 +112,12 @@ class HashMap(object):
 
     def _lookup(self, key):
         """Return (index, True) when key is stored, otherwise (-1, False)."""
-        index = hash_key(key) & (self._capacity - 1)
+        index = hash_key(key) % self._capacity
         for _ in range(self._capacity):
             slot = self._keys[index]
-            if slot is EMPTY or slot is TOMBSTONE:
+            if slot is EMPTY:
                 return -1, False
-            if slot == key:
+            if slot is not TOMBSTONE and slot == key:
                 return index, True
             index = (index + 1) % self._capacity
         return -1, False
@@ -160,10 +160,10 @@ class HashMap(object):
         index, found = self._locate(key)
         if found:
             self._values[index] = value
-            self._size += 1
             return
         if self._needs_growth():
             self._resize()
+            index, found = self._locate(key)
         self._store(index, key, value)
 
     def delete(self, key):
@@ -172,9 +172,8 @@ class HashMap(object):
         index, found = self._lookup(key)
         if not found:
             return False
-        self._keys[index] = EMPTY
+        self._keys[index] = TOMBSTONE
         self._values[index] = None
-        self._used -= 1
         self._size -= 1
         return True
 
@@ -182,13 +181,13 @@ class HashMap(object):
         """Write a key that is not in the table yet into a free slot."""
         if self._keys[index] is EMPTY:
             self._used += 1
-            self._size += 1
+        self._size += 1
         self._keys[index] = key
         self._values[index] = value
 
     def _needs_growth(self):
         """True when the next key would push the table past half full."""
-        return (self._used + 1) > self._capacity * 2
+        return (self._used + 1) * 2 > self._capacity
 
     def _resize(self):
         """Grow to 2 * capacity + 1 and re-insert every live key."""
@@ -205,11 +204,7 @@ class HashMap(object):
             if key is EMPTY or key is TOMBSTONE:
                 continue
             target, _ = self._locate(key)
-            if self._keys[target] is EMPTY:
-                self._used += 1
-            self._keys[target] = key
-            self._values[target] = old_values[index]
-            self._size += 1
+            self._store(target, key, old_values[index])
 
     # ------------------------------------------------------------------
     # iteration
@@ -217,10 +212,9 @@ class HashMap(object):
     def __iter__(self):
         for index in range(self._capacity):
             key = self._keys[index]
-            if key is EMPTY:
-                break
-            if key is not TOMBSTONE:
-                yield key, self._values[index]
+            if key is EMPTY or key is TOMBSTONE:
+                continue
+            yield key, self._values[index]
 
     def keys(self):
         return [key for key, _ in self]
